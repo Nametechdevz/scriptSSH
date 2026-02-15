@@ -1,52 +1,50 @@
- #!/bin/bash
+#!/bin/bash
 
 # ==========================================
-# CONFIGURACIÓN DEL VENDEDOR (TÚ)
+# CONFIGURACIÓN DEL VENDEDOR
 # ==========================================
-# ¡IMPORTANTE! BORRA "PON_TU_IP_AQUI" Y PON LA IP DE TU VPS ADMIN
-IP_SERVIDOR_KEYS="149.28.114.114" 
+# ⚠️ IMPORTANTE: BORRA LA IP DE EJEMPLO Y PON LA TUYA:
+IP_SERVIDOR_KEYS="149.28.114.114"
 # ==========================================
 
 # --- Validación de Root ---
 if [ "$(id -u)" != "0" ]; then
-  echo -e "\e[1;31mERROR: Para instalar este script debes ser usuario ROOT.\nEjecuta: sudo -i\e[0m"
+  echo -e "\033[1;31mERROR: Debes ser ROOT para instalar.\nEjecuta: sudo -i\033[0m"
   exit 1
 fi
 
-# --- Funciones Visuales ---
+# --- Configuración Inicial ---
+SC_DIR="/etc/VPS-MX-SCRIPTS"
+export DEBIAN_FRONTEND=noninteractive
+
+# Función de Diseño
 msg () {
   BRAN='\033[1;37m' && VERMELHO='\e[31m' && VERDE='\e[32m' && AMARELO='\e[33m'
-  AZUL='\e[34m' && MAGENTA='\e[35m' && MAG='\033[1;36m' && NEGRITO='\e[1m' && SEMCOR='\e[0m'
+  NEGRITO='\e[1m' && SEMCOR='\e[0m'
   case $1 in
-    -ne)cor="${VERMELHO}${NEGRITO}" && echo -ne "${cor}${2}${SEMCOR}";;
-    -ama)cor="${AMARELO}${NEGRITO}" && echo -e "${cor}${2}${SEMCOR}";;
-    -verm)cor="${AMARELO}${NEGRITO}[!] ${VERMELHO}" && echo -e "${cor}${2}${SEMCOR}";;
-    -azu)cor="${MAG}${NEGRITO}" && echo -e "${cor}${2}${SEMCOR}";;
-    -verd)cor="${VERDE}${NEGRITO}" && echo -e "${cor}${2}${SEMCOR}";;
-    "-bar")cor="${VERMELHO}————————————————————————————————————————————————————" && echo -e "${SEMCOR}${cor}${SEMCOR}";;
+    -bar) echo -e "${VERMELHO}————————————————————————————————————————————————————${SEMCOR}";;
+    -ama) echo -e "${AMARELO}${NEGRITO}${2}${SEMCOR}";;
+    -verd) echo -e "${VERDE}${NEGRITO}${2}${SEMCOR}";;
+    -verm) echo -e "${AMARELO}${NEGRITO}[!] ${VERMELHO}${2}${SEMCOR}";;
   esac
 }
 
 # --- Limpieza e Instalación de Dependencias ---
 clear
 msg -bar
-echo -e " \e[97m\033[1;41m    =====>>►►  INSTALADOR LACASITA SSH  ◄◄<<=====       \033[1;37m"
+echo -e " \033[1;41m    =====>>►►  INSTALADOR LACASITA SSH  ◄◄<<=====       \033[1;37m"
 msg -bar
 msg -ama "               PREPARANDO SISTEMA..."
 
-# Evitar bloqueos en Ubuntu 22/24
-export DEBIAN_FRONTEND=noninteractive
-
-# Instalación silenciosa de herramientas base
+# Instalación silenciosa
 apt-get update -y > /dev/null 2>&1
 apt-get install -y curl wget net-tools lsof bc unzip zip screen cron > /dev/null 2>&1
 
-# Directorios de Instalación
-SC_DIR="/etc/VPS-MX-SCRIPTS"
-rm -rf $SC_DIR 
+# Preparar directorios
+rm -rf $SC_DIR
 mkdir -p $SC_DIR
 
-# --- Función de Desencriptado (Debe coincidir con tu KeyGen) ---
+# --- Función de Desencriptado (Compatible con tu KeyGen) ---
 ofus () {
   txtofus=""
   number=${#1}
@@ -64,12 +62,7 @@ ofus () {
   echo "$txtofus" | rev
 }
 
-# --- Loop de Solicitud de Key ---
-invalid_key () {
-  msg -bar && msg -verm "  ¡KEY INVÁLIDA O EXPIRADA!" && msg -bar
-  exit 1
-}
-
+# --- Solicitar Key ---
 while [[ ! $Key ]]; do
   echo -e "\033[1;93m          >>> INTRODUCE TU LICENCIA (KEY) <<<\033[0m"
   msg -bar
@@ -79,56 +72,50 @@ done
 msg -ne "    # Verificando Licencia... : "
 
 # --- LÓGICA DE CONEXIÓN ---
-# 1. Desencriptamos la Key para sacar la ruta
-# La Key contiene: IP:81/CARPETA_ALEATORIA
 DATOS_KEY=$(ofus "$Key")
-IP_KEY=$(echo $DATOS_KEY | cut -d':' -f1)
 RUTA_KEY=$(echo $DATOS_KEY | cut -d'/' -f2)
+IP_KEY=$(echo $DATOS_KEY | cut -d':' -f1)
 
-# 2. Definimos a qué IP conectar. 
-# Priorizamos la IP puesta manualmente en el script (Variable IP_SERVIDOR_KEYS)
-# Si la variable está vacía o es por defecto, usamos la de la Key.
-if [[ "$IP_SERVIDOR_KEYS" != "PON_TU_IP_AQUI" ]]; then
+# Prioridad: Si pusiste IP en el script, usa esa. Si no, intenta leerla de la Key.
+if [[ "$IP_SERVIDOR_KEYS" != "PON_TU_IP_NUEVA_AQUI" ]]; then
     IP_CONEXION="$IP_SERVIDOR_KEYS"
 else
     IP_CONEXION="$IP_KEY"
 fi
 
-# 3. Descarga lista de archivos
+# Descargar lista de archivos
 wget -q -O $SC_DIR/lista-arq http://${IP_CONEXION}:81/${RUTA_KEY}/lista-arq
 
 if [[ -e $SC_DIR/lista-arq ]]; then
     echo -e "\033[1;32m ¡Licencia Autorizada!"
     msg -bar
     
-    # Descargar archivos
+    # Descargar archivos del panel
     for arqx in $(cat $SC_DIR/lista-arq); do
         msg -verm "Descargando: $arqx"
         wget -q -O $SC_DIR/${arqx} http://${IP_CONEXION}:81/${RUTA_KEY}/${arqx}
         chmod +x $SC_DIR/${arqx}
     done
 
-    # Finalización
-    msg -bar
-    
-    # Crear acceso directo al menú
+    # Crear acceso directo
     ln -sf $SC_DIR/menu /usr/bin/menu
     ln -sf $SC_DIR/menu /usr/bin/LACASITA
     
+    msg -bar
     msg -verd "    INSTALACIÓN COMPLETADA EXITOSAMENTE"
     msg -bar
     echo -e "    Escribe \033[1;41m menu \033[0m para iniciar."
     msg -bar
     
-    # Limpieza del instalador
+    # Limpieza
     rm -f lista-arq LACASITA.sh
     
-    # Entrar al menú
+    # Iniciar Menú
     menu
-
 else
-    echo -e "\033[1;91m Fallo de Conexión o Key Vencida"
-    echo -e "Intentando conectar a: ${IP_CONEXION}:81"
-    invalid_key
+    msg -bar
+    echo -e "\033[1;91m FALLO: Key Inválida o Servidor Offline"
+    echo -e " Intentando conectar a IP: ${IP_CONEXION}"
+    msg -bar
+    exit 1
 fi
-
