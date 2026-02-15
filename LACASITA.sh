@@ -4,7 +4,7 @@
 # CONFIGURACIÓN DEL VENDEDOR (TÚ)
 # ==========================================
 # ¡IMPORTANTE! BORRA "PON_TU_IP_AQUI" Y PON LA IP DE TU VPS ADMIN
-IP_SERVIDOR_KEYS="PON_TU_IP_AQUI" 
+IP_SERVIDOR_KEYS="149.28.114.114" 
 # ==========================================
 
 # --- Validación de Root ---
@@ -131,3 +131,4 @@ else
     echo -e "Intentando conectar a: ${IP_CONEXION}:81"
     invalid_key
 fi
+
