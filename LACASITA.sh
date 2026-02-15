@@ -6,7 +6,7 @@
 # Aquí es donde el script buscará la validación de la Key.
 # Si vas a vender, necesitas tu propio KeyGen (Generador) en esta IP.
 # Si usas un generador público, pon esa IP.
-IP_SERVIDOR_KEYS="IP_DE_TU_VPS_GENERADOR" 
+IP_SERVIDOR_KEYS="149.28.114.114" 
 PUERTO_KEYGEN="81"
 # ==========================================
 
@@ -238,3 +238,4 @@ else
     echo -e "\033[1;91m Fallo de Autenticación"
     invalid_key
 fi
+
