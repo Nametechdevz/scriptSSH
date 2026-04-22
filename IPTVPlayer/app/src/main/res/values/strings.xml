@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IPTV Player</string>
+    <string name="login_title">Connect to Server</string>
+    <string name="login_dns_hint">Server URL (e.g. http://server.com:8080)</string>
+    <string name="login_user_hint">Username</string>
+    <string name="login_pass_hint">Password</string>
+    <string name="login_button">Connect</string>
+    <string name="login_connecting">Connecting…</string>
+    <string name="login_error_empty">Please fill all fields</string>
+    <string name="login_error_invalid">Invalid credentials or server unreachable</string>
+    <string name="home_live_tv">Live TV</string>
+    <string name="home_movies">Movies</string>
+    <string name="home_series">Series</string>
+    <string name="home_favorites">My Favorites</string>
+    <string name="admin_title">Admin Panel</string>
+    <string name="admin_pin_hint">Enter 4-digit PIN</string>
+    <string name="admin_pin_incorrect">Incorrect PIN</string>
+    <string name="channel_loading">Loading stream…</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+</resources>
