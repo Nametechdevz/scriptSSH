@@ -16,15 +16,17 @@ import com.iptvapp.player.ui.screens.player.PlayerScreen
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Home : Screen("home")
-    object Player : Screen("player/{streamId}/{streamType}/{title}/{extension}") {
-        fun createRoute(streamId: Int, streamType: StreamType, title: String, extension: String = "m3u8") =
-            "player/$streamId/${streamType.name}/${title.encodeUrlSafe()}/$extension"
+
+    // Use query params to avoid NavController route-parsing conflicts with encoded titles
+    object Player : Screen("player/{streamId}/{streamType}?title={title}&ext={ext}") {
+        fun createRoute(streamId: Int, streamType: StreamType, title: String, ext: String = "m3u8"): String {
+            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            return "player/$streamId/${streamType.name}?title=$encodedTitle&ext=$ext"
+        }
     }
+
     object Admin : Screen("admin")
 }
-
-private fun String.encodeUrlSafe() = java.net.URLEncoder.encode(this, "UTF-8")
-private fun String.decodeUrlSafe() = java.net.URLDecoder.decode(this, "UTF-8")
 
 @Composable
 fun IPTVNavGraph(
@@ -74,21 +76,28 @@ fun IPTVNavGraph(
             arguments = listOf(
                 navArgument("streamId") { type = NavType.IntType },
                 navArgument("streamType") { type = NavType.StringType },
-                navArgument("title") { type = NavType.StringType },
-                navArgument("extension") { type = NavType.StringType }
+                navArgument("title") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument("ext") {
+                    type = NavType.StringType
+                    defaultValue = "m3u8"
+                }
             )
         ) { backStackEntry ->
             val streamId = backStackEntry.arguments?.getInt("streamId") ?: 0
             val streamTypeStr = backStackEntry.arguments?.getString("streamType") ?: "LIVE"
-            val title = backStackEntry.arguments?.getString("title")?.decodeUrlSafe() ?: ""
-            val extension = backStackEntry.arguments?.getString("extension") ?: "m3u8"
-            val streamType = StreamType.valueOf(streamTypeStr)
+            // NavController already decodes query parameters — no manual decode needed
+            val title = backStackEntry.arguments?.getString("title") ?: ""
+            val ext = backStackEntry.arguments?.getString("ext") ?: "m3u8"
+            val streamType = try { StreamType.valueOf(streamTypeStr) } catch (e: Exception) { StreamType.LIVE }
 
             PlayerScreen(
                 streamId = streamId,
                 streamType = streamType,
                 title = title,
-                extension = extension,
+                extension = ext,
                 onBack = { navController.popBackStack() }
             )
         }

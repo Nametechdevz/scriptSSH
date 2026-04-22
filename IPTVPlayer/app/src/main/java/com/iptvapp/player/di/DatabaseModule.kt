@@ -3,6 +3,7 @@ package com.iptvapp.player.di
 import android.content.Context
 import androidx.room.Room
 import com.iptvapp.player.data.local.AppDatabase
+import com.iptvapp.player.data.local.dao.AppUserDao
 import com.iptvapp.player.data.local.dao.ChannelDao
 import com.iptvapp.player.data.local.dao.MovieDao
 import com.iptvapp.player.data.local.dao.SeriesDao
@@ -24,12 +25,8 @@ object DatabaseModule {
             .fallbackToDestructiveMigration()
             .build()
 
-    @Provides
-    fun provideChannelDao(db: AppDatabase): ChannelDao = db.channelDao()
-
-    @Provides
-    fun provideMovieDao(db: AppDatabase): MovieDao = db.movieDao()
-
-    @Provides
-    fun provideSeriesDao(db: AppDatabase): SeriesDao = db.seriesDao()
+    @Provides fun provideChannelDao(db: AppDatabase): ChannelDao = db.channelDao()
+    @Provides fun provideMovieDao(db: AppDatabase): MovieDao = db.movieDao()
+    @Provides fun provideSeriesDao(db: AppDatabase): SeriesDao = db.seriesDao()
+    @Provides fun provideAppUserDao(db: AppDatabase): AppUserDao = db.appUserDao()
 }

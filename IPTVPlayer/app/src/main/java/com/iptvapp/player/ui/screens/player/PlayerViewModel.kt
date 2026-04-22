@@ -4,8 +4,15 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import com.iptvapp.player.domain.model.StreamType
 import com.iptvapp.player.domain.usecase.GetStreamUrlUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,7 +33,8 @@ data class PlayerUiState(
     val isBuffering: Boolean = true,
     val error: String? = null,
     val title: String = "",
-    val isLive: Boolean = false
+    val isLive: Boolean = false,
+    val streamUrl: String = ""
 )
 
 @HiltViewModel
@@ -38,15 +46,57 @@ class PlayerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
-    val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
+    // OkHttp client shared for media downloads (handles redirects, timeouts, self-signed certs)
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("User-Agent", "IPTVPlayer/1.0 (Android)")
+                    .build()
+            )
+        }
+        .build()
+
+    private val httpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+
+    // DefaultRenderersFactory with PREFER_DECODER_EXTENSIONS tries software decoders
+    // for AC3/EAC3/DTS audio that many IPTV streams use — fixes the no-audio bug
+    private val renderersFactory = DefaultRenderersFactory(context).apply {
+        setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+    }
+
+    val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).build().apply {
         addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.update { it.copy(isPlaying = isPlaying) }
             }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 _uiState.update {
-                    it.copy(isBuffering = playbackState == Player.STATE_BUFFERING)
+                    it.copy(
+                        isBuffering = playbackState == Player.STATE_BUFFERING,
+                        error = if (playbackState == Player.STATE_IDLE) it.error else null
+                    )
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val msg = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
+                        "No se pudo conectar al servidor. Verifica la URL."
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                        "Tiempo de conexión agotado."
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                        "Error del servidor (HTTP ${error.message})."
+                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
+                        "Formato de stream no compatible."
+                    else -> "Error de reproducción: ${error.message}"
+                }
+                _uiState.update { it.copy(error = msg, isBuffering = false) }
             }
         })
     }
@@ -59,13 +109,45 @@ class PlayerViewModel @Inject constructor(
 
     fun loadStream(streamId: Int, streamType: StreamType, title: String, extension: String = "m3u8") {
         val isLive = streamType == StreamType.LIVE
-        _uiState.update { it.copy(title = title, isLive = isLive) }
+        _uiState.update { it.copy(title = title, isLive = isLive, error = null, isBuffering = true) }
 
-        val streamUrl = getStreamUrlUseCase(streamId, streamType, extension)
-        val mediaItem = MediaItem.fromUri(streamUrl.url)
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.playWhenReady = true
+        try {
+            val streamUrl = getStreamUrlUseCase(streamId, streamType, extension)
+
+            if (streamUrl.url.isBlank() || !streamUrl.url.startsWith("http")) {
+                _uiState.update {
+                    it.copy(
+                        error = "URL inválida: '${streamUrl.url}'. Verifica la configuración del servidor.",
+                        isBuffering = false
+                    )
+                }
+                return
+            }
+
+            _uiState.update { it.copy(streamUrl = streamUrl.url) }
+
+            val mediaItem = MediaItem.fromUri(streamUrl.url)
+
+            // Use HLS media source for .m3u8, progressive for everything else
+            val mediaSource = if (extension == "m3u8" || isLive) {
+                HlsMediaSource.Factory(httpDataSourceFactory).createMediaSource(mediaItem)
+            } else {
+                ProgressiveMediaSource.Factory(httpDataSourceFactory).createMediaSource(mediaItem)
+            }
+
+            player.setMediaSource(mediaSource)
+            player.prepare()
+            player.playWhenReady = true
+
+            showControlsTemporarily()
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(
+                    error = "Error iniciando stream: ${e.message}",
+                    isBuffering = false
+                )
+            }
+        }
     }
 
     fun togglePlayPause() {
@@ -79,7 +161,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun seekForward() {
-        player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration))
+        player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration.coerceAtLeast(0L)))
         showControlsTemporarily()
     }
 
@@ -95,6 +177,15 @@ class PlayerViewModel @Inject constructor(
         controlsHideJob = viewModelScope.launch {
             delay(4000)
             _uiState.update { it.copy(isControlsVisible = false) }
+        }
+    }
+
+    fun retryStream() {
+        val state = _uiState.value
+        if (state.streamUrl.isNotBlank()) {
+            _uiState.update { it.copy(error = null, isBuffering = true) }
+            player.prepare()
+            player.playWhenReady = true
         }
     }
 
